@@ -1,6 +1,6 @@
 # Spark Lab — Kids Circuit Studio
 
-Spark Lab is a frontend-only, interactive electronics learning app for children. It includes a drag-and-drop circuit board, terminal-to-terminal wiring, animated current flow, working lamps, LEDs, switches and motors, five guided beginner lessons, a free-build sandbox, and local progress saving.
+Spark Lab is a frontend-only, interactive electronics learning app for children. It includes a drag-and-drop circuit board, terminal-to-terminal wiring, animated current flow, working lamps, LEDs, switches, motors and a buzzer, nine guided lessons, a free-build sandbox, and local progress saving.
 
 ## Run locally
 
@@ -25,11 +25,11 @@ npm run build
 2. Click one component terminal and then another terminal to connect a wire.
 3. Use **Run / Pause** to control the simulation.
 4. Click **Close** on a switch to complete its path.
-5. Select a component and use the trash button to remove it.
+5. Select a component or wire and use the trash button to remove it.
 
 Progress is stored only in the browser using `localStorage`. The project has no backend, account system, analytics, or external services.
 
-## Phase 1 scope
+## Phase 1 foundation
 
 - Battery, switch, 220 Ω resistor, LED, lamp, and motor
 - Click-to-add and drag-to-place components
@@ -41,6 +41,17 @@ Progress is stored only in the browser using `localStorage`. The project has no 
 - Five progressive lessons and a sandbox mode
 - Responsive desktop/tablet/mobile layout
 - Keyboard focus styles and reduced-motion support
+
+## Phase 2 upgrades
+
+- Branch-aware simulation for series and parallel circuits
+- Short-circuit detection with automatic safety shutdown
+- Per-branch LED polarity and resistor protection checks
+- Selectable, deletable and visually separated wire routes
+- 3V, 6V and 9V controls with a simplified current meter
+- Animated buzzer component
+- Four new lessons covering series, parallel, shorts and sound
+- Contextual hints for all nine lessons
 
 ## Important note
 
