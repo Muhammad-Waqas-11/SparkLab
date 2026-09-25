@@ -5,7 +5,11 @@ export type ComponentType =
   | "led"
   | "lamp"
   | "motor"
-  | "buzzer";
+  | "buzzer"
+  | "potentiometer"
+  | "capacitor"
+  | "ammeter"
+  | "voltmeter";
 
 export type CircuitPart = {
   id: string;
@@ -13,6 +17,7 @@ export type CircuitPart = {
   x: number;
   y: number;
   closed?: boolean;
+  resistance?: number;
 };
 
 export type Wire = { id: string; from: string; to: string };
@@ -49,6 +54,8 @@ export type CircuitAnalysis = {
   hasUsefulOutput: boolean;
   currentMilliAmps: number;
   branchCount: number;
+  partCurrentMilliAmps: Map<string, number>;
+  partVoltageDrops: Map<string, number>;
 };
 
 export const pinId = (partId: string, index: 0 | 1) => `${partId}:${index}`;
@@ -60,7 +67,17 @@ const resistanceByType: Record<Exclude<ComponentType, "battery">, number> = {
   lamp: 90,
   motor: 60,
   buzzer: 110,
+  potentiometer: 220,
+  capacitor: 160,
+  ammeter: 1,
+  voltmeter: 1_000_000,
 };
+
+function partResistance(part: CircuitPart) {
+  if (part.type === "battery") return 0;
+  if (part.type === "potentiometer") return Math.max(1, part.resistance ?? resistanceByType.potentiometer);
+  return resistanceByType[part.type];
+}
 
 function enumeratePaths(edges: Edge[], start: string, goal: string) {
   const adjacency = new Map<string, Edge[]>();
@@ -135,10 +152,10 @@ export function analyzeCircuit(
         return from === pinId(edge.partId, 0) ? [] : [edge.partId];
       });
       const componentTypes = partIds.map((id) => partById.get(id)?.type).filter(Boolean);
-      const isShort = !componentTypes.some((type) => type !== "switch");
+      const isShort = !componentTypes.some((type) => type !== "switch" && type !== "ammeter");
       const resistance = Math.max(1, partIds.reduce((sum, id) => {
-        const type = partById.get(id)?.type;
-        return type && type !== "battery" ? sum + resistanceByType[type] : sum;
+        const part = partById.get(id);
+        return part ? sum + partResistance(part) : sum;
       }, 0));
 
       completePaths.push({ partIds, wireIds, reversedLedIds, resistance, isShort });
@@ -155,7 +172,10 @@ export function analyzeCircuit(
   const unsafeLedIds = new Set<string>();
 
   for (const path of activePaths) {
-    const hasResistor = path.partIds.some((id) => partById.get(id)?.type === "resistor");
+    const hasResistor = path.partIds.some((id) => {
+      const type = partById.get(id)?.type;
+      return type === "resistor" || type === "potentiometer";
+    });
     if (!hasResistor) {
       for (const id of path.partIds) if (partById.get(id)?.type === "led") unsafeLedIds.add(id);
     }
@@ -170,6 +190,19 @@ export function analyzeCircuit(
     (sum, path) => sum + (voltage / path.resistance) * 1000,
     0,
   );
+  const partCurrentMilliAmps = new Map<string, number>();
+  const partVoltageDrops = new Map<string, number>();
+
+  for (const path of activePaths) {
+    const pathCurrent = (voltage / path.resistance) * 1000;
+    for (const id of path.partIds) {
+      const part = partById.get(id);
+      if (!part) continue;
+      partCurrentMilliAmps.set(id, (partCurrentMilliAmps.get(id) ?? 0) + pathCurrent);
+      const voltageDrop = (partResistance(part) / path.resistance) * voltage;
+      partVoltageDrops.set(id, Math.max(partVoltageDrops.get(id) ?? 0, voltageDrop));
+    }
+  }
 
   return {
     completePaths,
@@ -184,5 +217,7 @@ export function analyzeCircuit(
     hasUsefulOutput,
     currentMilliAmps,
     branchCount: activePaths.length,
+    partCurrentMilliAmps,
+    partVoltageDrops,
   };
 }

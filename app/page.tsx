@@ -2,8 +2,8 @@
 
 import {
   Activity, AlertTriangle, BatteryCharging, Check, ChevronRight, CircleHelp,
-  Eraser, FlaskConical, GraduationCap, Lightbulb, MousePointer2, Pause, Play,
-  RotateCcw, Sparkles, Trash2, Unplug, Volume2, Zap,
+  Eraser, FlaskConical, Gauge, GraduationCap, Lightbulb, MousePointer2, Pause, Play,
+  RotateCcw, Sparkles, Trash2, Trophy, Unplug, Volume2, Zap,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -22,6 +22,7 @@ type Pin = { id: string; partId: string; index: 0 | 1; x: number; y: number };
 type LessonContext = {
   analysis: CircuitAnalysis;
   activePaths: CircuitPath[];
+  capacitorCharge: Record<string, number>;
   parts: CircuitPart[];
   poweredParts: Set<string>;
 };
@@ -49,11 +50,22 @@ const CATALOG: Record<ComponentType, { name: string; hint: string; color: string
   lamp: { name: "Lamp", hint: "Turns energy into light", color: "#7c91ff" },
   motor: { name: "Motor", hint: "Turns energy into motion", color: "#a97ce8" },
   buzzer: { name: "Buzzer", hint: "Turns energy into sound", color: "#2f9fc7" },
+  potentiometer: { name: "Variable resistor", hint: "Adjusts current", color: "#d6743f" },
+  capacitor: { name: "Capacitor", hint: "Stores charge", color: "#24a6a1" },
+  ammeter: { name: "Ammeter", hint: "Measures current", color: "#356bd6" },
+  voltmeter: { name: "Voltmeter", hint: "Measures voltage", color: "#8b5fd3" },
 };
 
 const uid = (prefix: string) => `${prefix}-${Math.random().toString(36).slice(2, 9)}`;
 function makePart(type: ComponentType, x: number, y: number, id = uid(type)): CircuitPart {
-  return { id, type, x, y, closed: type === "switch" ? false : undefined };
+  return {
+    id,
+    type,
+    x,
+    y,
+    closed: type === "switch" ? false : undefined,
+    resistance: type === "potentiometer" ? 220 : undefined,
+  };
 }
 function makeWire(from: string, to: string, id = uid("wire")): Wire { return { id, from, to }; }
 function baseLoop(types: ComponentType[]) {
@@ -163,6 +175,75 @@ const lessons: Lesson[] = [
     starter: () => baseLoop(["battery", "switch", "buzzer"]),
     check: ({ parts, poweredParts }) => parts.some((part) => part.type === "buzzer" && poweredParts.has(part.id)),
   },
+  {
+    id: 10, eyebrow: "Phase three · current", title: "Read the current",
+    instruction: "Put the ammeter in the same series loop as the lamp. It must carry the same current as the lamp.",
+    success: "The ammeter is reading the current flowing through the whole series loop.",
+    concept: "Current is measured in amperes. An ammeter is placed in series so current flows through it.",
+    hint: "Build one chain: battery + → ammeter → lamp → battery −.",
+    starter: () => baseLoop(["battery", "ammeter", "lamp"]),
+    check: ({ analysis, parts, poweredParts }) => {
+      const meter = parts.find((part) => part.type === "ammeter");
+      const lamp = parts.find((part) => part.type === "lamp");
+      return Boolean(meter && lamp && poweredParts.has(meter.id) && poweredParts.has(lamp.id) && (analysis.partCurrentMilliAmps.get(meter.id) ?? 0) > 0);
+    },
+  },
+  {
+    id: 11, eyebrow: "Phase three · voltage", title: "Measure the supply",
+    instruction: "Power the lamp on one branch, then connect the voltmeter across the battery on its own parallel branch.",
+    success: "The voltmeter is across the supply, so it reads almost the full battery voltage.",
+    concept: "Voltage is measured between two points. A voltmeter connects in parallel and draws almost no current.",
+    hint: "Make one complete lamp branch and a second branch containing only the voltmeter.",
+    starter: () => ({ parts: [makePart("battery", 70, 225, "voltage-battery"), makePart("lamp", 560, 105, "voltage-lamp"), makePart("voltmeter", 560, 345, "voltage-meter")], wires: [] }),
+    check: ({ activePaths, analysis, parts, poweredParts }) => {
+      const meter = parts.find((part) => part.type === "voltmeter");
+      const lamp = parts.find((part) => part.type === "lamp");
+      return Boolean(meter && lamp && poweredParts.has(meter.id) && poweredParts.has(lamp.id) && activePaths.length >= 2 && (analysis.partVoltageDrops.get(meter.id) ?? 0) >= 2.9);
+    },
+  },
+  {
+    id: 12, eyebrow: "Phase three · resistance", title: "Dim the lamp",
+    instruction: "Build a series loop with the variable resistor and lamp. Tap the resistor value until the current falls below 30 mA.",
+    success: "More resistance reduced the current, so the lamp receives less energy.",
+    concept: "Ohm’s law links voltage, resistance and current. With the same voltage, more resistance means less current.",
+    hint: "Wire one loop, then tap the variable resistor until it reaches 470 Ω or 1000 Ω.",
+    starter: () => baseLoop(["battery", "potentiometer", "lamp"]),
+    check: ({ analysis, parts, poweredParts }) => {
+      const resistor = parts.find((part) => part.type === "potentiometer");
+      const lamp = parts.find((part) => part.type === "lamp");
+      return Boolean(resistor && lamp && poweredParts.has(lamp.id) && (resistor.resistance ?? 0) >= 470 && analysis.currentMilliAmps < 30);
+    },
+  },
+  {
+    id: 13, eyebrow: "Phase three · storage", title: "Charge a capacitor",
+    instruction: "Make a switched loop with the capacitor, close the switch, and keep current flowing until it reaches 80% charge.",
+    success: "The capacitor stored electrical energy while current flowed into it.",
+    concept: "A capacitor stores separated electric charge. Its stored energy can remain briefly after the supply is removed.",
+    hint: "Wire battery, switch and capacitor in one loop, press CLOSE, then watch the charge meter.",
+    starter: () => baseLoop(["battery", "switch", "capacitor"]),
+    check: ({ capacitorCharge, parts, poweredParts }) => {
+      const capacitor = parts.find((part) => part.type === "capacitor");
+      return Boolean(capacitor && poweredParts.has(capacitor.id) && (capacitorCharge[capacitor.id] ?? 0) >= 80);
+    },
+  },
+  {
+    id: 14, eyebrow: "Phase three · lab", title: "Build a measurement lab",
+    instruction: "Create a dimmable lamp branch with the variable resistor and ammeter, plus a separate voltmeter branch across the battery.",
+    success: "Your lab measures current in series and voltage in parallel while resistance controls the lamp.",
+    concept: "Real circuit testing combines measurements: current through a branch, voltage across it, and resistance controlling it.",
+    hint: "Series branch: battery → variable resistor → ammeter → lamp → battery. Parallel branch: voltmeter across the battery.",
+    starter: () => ({
+      parts: [makePart("battery", 35, 220, "lab-battery"), makePart("potentiometer", 235, 105, "lab-resistor"), makePart("ammeter", 445, 105, "lab-ammeter"), makePart("lamp", 660, 105, "lab-lamp"), makePart("voltmeter", 445, 360, "lab-voltmeter")],
+      wires: [],
+    }),
+    check: ({ activePaths, analysis, parts, poweredParts }) => {
+      const resistor = parts.find((part) => part.type === "potentiometer");
+      const lamp = parts.find((part) => part.type === "lamp");
+      const ammeter = parts.find((part) => part.type === "ammeter");
+      const voltmeter = parts.find((part) => part.type === "voltmeter");
+      return Boolean(resistor && lamp && ammeter && voltmeter && (resistor.resistance ?? 0) >= 470 && activePaths.length >= 2 && poweredParts.has(lamp.id) && poweredParts.has(ammeter.id) && poweredParts.has(voltmeter.id) && (analysis.partCurrentMilliAmps.get(ammeter.id) ?? 0) > 0 && (analysis.partVoltageDrops.get(voltmeter.id) ?? 0) >= 2.9);
+    },
+  },
 ];
 
 function getPin(part: CircuitPart, index: 0 | 1): Pin {
@@ -199,7 +280,11 @@ function PartSymbol({ type, active, closed }: { type: ComponentType; active: boo
   if (type === "led") return <svg viewBox="0 0 76 44" aria-hidden="true" className={active ? "led-on" : ""}><path d="M4 22h20m28 0h20" className="symbol-line" /><path d="M24 10l25 12-25 12zM51 9v26" className="symbol-line symbol-soft-fill" /><path d="M48 9l9-7m-2 10 9-7" className="light-ray" /></svg>;
   if (type === "lamp") return <svg viewBox="0 0 76 44" aria-hidden="true" className={active ? "lamp-on" : ""}><path d="M4 22h18m32 0h18" className="symbol-line" /><circle cx="38" cy="22" r="16" className="lamp-glass" /><path d="M29 13l18 18m0-18L29 31" className="symbol-line" /></svg>;
   if (type === "motor") return <svg viewBox="0 0 76 44" aria-hidden="true"><path d="M4 22h15m38 0h15" className="symbol-line" /><circle cx="38" cy="22" r="17" className="motor-case" /><text x="38" y="29" textAnchor="middle" className="motor-m">M</text><g className={active ? "motor-rotor spinning" : "motor-rotor"}><path d="M38 7v7m0 16v7M23 22h7m16 0h7" /></g></svg>;
-  return <svg viewBox="0 0 76 44" aria-hidden="true" className={active ? "buzzer-on" : ""}><path d="M4 22h15m38 0h15" className="symbol-line" /><path d="M20 14h18l12-8v32l-12-8H20z" className="buzzer-body" /><path d="M55 13c5 5 5 13 0 18m6-24c9 9 9 21 0 30" className="sound-wave" /></svg>;
+  if (type === "buzzer") return <svg viewBox="0 0 76 44" aria-hidden="true" className={active ? "buzzer-on" : ""}><path d="M4 22h15m38 0h15" className="symbol-line" /><path d="M20 14h18l12-8v32l-12-8H20z" className="buzzer-body" /><path d="M55 13c5 5 5 13 0 18m6-24c9 9 9 21 0 30" className="sound-wave" /></svg>;
+  if (type === "potentiometer") return <svg viewBox="0 0 76 44" aria-hidden="true"><path d="M4 25h10l5-9 8 18 8-18 8 18 8-18 6 9h15" className="symbol-line" /><path d="M54 4L39 20m15-16-2 9m2-9-9 2" className="control-arrow" /></svg>;
+  if (type === "capacitor") return <svg viewBox="0 0 76 44" aria-hidden="true" className={active ? "capacitor-active" : ""}><path d="M4 22h28m12 0h28M32 7v30M44 7v30" className="symbol-line" /></svg>;
+  if (type === "ammeter") return <svg viewBox="0 0 76 44" aria-hidden="true"><path d="M4 22h17m34 0h17" className="symbol-line" /><circle cx="38" cy="22" r="17" className="meter-case" /><text x="38" y="29" textAnchor="middle" className="meter-letter">A</text></svg>;
+  return <svg viewBox="0 0 76 44" aria-hidden="true"><path d="M4 22h17m34 0h17" className="symbol-line" /><circle cx="38" cy="22" r="17" className="meter-case" /><text x="38" y="29" textAnchor="middle" className="meter-letter">V</text></svg>;
 }
 
 function PaletteSymbol({ type }: { type: ComponentType }) {
@@ -218,6 +303,7 @@ export default function Home() {
   const [voltage, setVoltage] = useState(9);
   const [completed, setCompleted] = useState<number[]>([]);
   const [progressLoaded, setProgressLoaded] = useState(false);
+  const [capacitorCharge, setCapacitorCharge] = useState<Record<string, number>>({});
   const [notice, setNotice] = useState("Tap two terminals to connect a wire.");
   const [showHint, setShowHint] = useState(false);
   const [dragging, setDragging] = useState<{ id: string; dx: number; dy: number } | null>(null);
@@ -226,7 +312,7 @@ export default function Home() {
   const analysis = useMemo(() => analyzeCircuit(parts, wires, voltage), [parts, voltage, wires]);
   const poweredParts = useMemo(() => running ? analysis.poweredParts : new Set<string>(), [analysis.poweredParts, running]);
   const poweredWires = useMemo(() => running ? analysis.poweredWires : new Set<string>(), [analysis.poweredWires, running]);
-  const lessonPassedNow = mode === "learn" && running && lesson.check({ analysis, activePaths: analysis.activePaths, parts, poweredParts });
+  const lessonPassedNow = mode === "learn" && running && lesson.check({ analysis, activePaths: analysis.activePaths, capacitorCharge, parts, poweredParts });
   const lessonComplete = completed.includes(lesson.id) || lessonPassedNow;
 
   useEffect(() => {
@@ -269,6 +355,25 @@ export default function Home() {
     else if (analysis.hasCurrent) setNotice(`${analysis.branchCount} ${analysis.branchCount === 1 ? "path is" : "paths are"} carrying current.`);
   }, [analysis, parts, running]);
 
+  useEffect(() => {
+    const capacitorIds = parts.filter((part) => part.type === "capacitor").map((part) => part.id);
+    if (!capacitorIds.length) return;
+    const timer = window.setInterval(() => {
+      setCapacitorCharge((current) => {
+        const next: Record<string, number> = {};
+        let changed = Object.keys(current).length !== capacitorIds.length;
+        for (const id of capacitorIds) {
+          const previous = current[id] ?? 0;
+          const target = running && poweredParts.has(id) ? Math.min(100, previous + 4) : Math.max(0, previous - 2);
+          next[id] = target;
+          if (target !== previous) changed = true;
+        }
+        return changed ? next : current;
+      });
+    }, 100);
+    return () => window.clearInterval(timer);
+  }, [parts, poweredParts, running]);
+
   const clearSelection = useCallback(() => {
     setSelectedPart(null);
     setSelectedWire(null);
@@ -281,6 +386,7 @@ export default function Home() {
     setWires(starter.wires);
     clearSelection();
     setShowHint(false);
+    setCapacitorCharge({});
     setRunning(true);
   }, [clearSelection, lessonIndex]);
 
@@ -293,6 +399,7 @@ export default function Home() {
     setWires(starter.wires);
     clearSelection();
     setShowHint(false);
+    setCapacitorCharge({});
     setRunning(true);
   }, [clearSelection]);
 
@@ -300,6 +407,7 @@ export default function Home() {
     if (mode === "sandbox") {
       setParts([]);
       setWires([]);
+      setCapacitorCharge({});
       clearSelection();
       setRunning(true);
       setNotice("Choose components from the parts tray and invent your own circuit.");
@@ -322,7 +430,7 @@ export default function Home() {
     if (!context?.registerTool) return;
     const lifecycle = new AbortController();
     try {
-      context.registerTool({ name: "load_learning_lesson", title: "Load circuit lesson", description: "Open one of the nine visible circuit lessons.", inputSchema: { type: "object", properties: { lessonNumber: { type: "integer", minimum: 1, maximum: 9 } }, required: ["lessonNumber"], additionalProperties: false }, annotations: { readOnlyHint: false, untrustedContentHint: false }, execute(input: unknown) { const lessonNumber = Number((input as { lessonNumber?: number })?.lessonNumber); if (!Number.isInteger(lessonNumber) || lessonNumber < 1 || lessonNumber > 9) throw new Error("lessonNumber must be an integer from 1 to 9"); loadLesson(lessonNumber - 1); return { loaded: lessonNumber, title: lessons[lessonNumber - 1].title }; } }, { signal: lifecycle.signal });
+      context.registerTool({ name: "load_learning_lesson", title: "Load circuit lesson", description: "Open one of the fourteen visible circuit lessons.", inputSchema: { type: "object", properties: { lessonNumber: { type: "integer", minimum: 1, maximum: 14 } }, required: ["lessonNumber"], additionalProperties: false }, annotations: { readOnlyHint: false, untrustedContentHint: false }, execute(input: unknown) { const lessonNumber = Number((input as { lessonNumber?: number })?.lessonNumber); if (!Number.isInteger(lessonNumber) || lessonNumber < 1 || lessonNumber > 14) throw new Error("lessonNumber must be an integer from 1 to 14"); loadLesson(lessonNumber - 1); return { loaded: lessonNumber, title: lessons[lessonNumber - 1].title }; } }, { signal: lifecycle.signal });
       context.registerTool({ name: "reset_circuit_board", title: "Reset circuit board", description: "Reset the current lesson, or clear the sandbox board.", inputSchema: { type: "object", properties: {}, additionalProperties: false }, annotations: { readOnlyHint: false, untrustedContentHint: false }, execute() { resetBoard(); return { reset: true, mode }; } }, { signal: lifecycle.signal });
     } catch { /* optional browser capability */ }
     return () => lifecycle.abort();
@@ -336,6 +444,7 @@ export default function Home() {
     else {
       setParts([]);
       setWires([]);
+      setCapacitorCharge({});
       setNotice("Choose components from the parts tray and invent your own circuit.");
     }
   }
@@ -346,6 +455,15 @@ export default function Home() {
     setParts((current) => [...current, next]);
     setSelectedPart(next.id);
     setSelectedWire(null);
+  }
+
+  function cycleResistance(partId: string) {
+    const levels = [100, 220, 470, 1_000];
+    setParts((current) => current.map((part) => {
+      if (part.id !== partId) return part;
+      const index = levels.indexOf(part.resistance ?? 220);
+      return { ...part, resistance: levels[(index + 1) % levels.length] };
+    }));
   }
 
   function handlePinClick(id: string) {
@@ -411,7 +529,7 @@ export default function Home() {
   return (
     <main className="app-shell">
       <header className="topbar">
-        <div className="brand" aria-label="Spark Lab home"><span className="brand-mark"><Zap size={22} fill="currentColor" /></span><span><strong>Spark Lab</strong><small>Kids Circuit Studio · Phase 2</small></span></div>
+        <div className="brand" aria-label="Spark Lab home"><span className="brand-mark"><Zap size={22} fill="currentColor" /></span><span><strong>Spark Lab</strong><small>Kids Circuit Studio · Phase 3</small></span></div>
         <nav className="mode-tabs" aria-label="App mode">
           <button className={mode === "learn" ? "active" : ""} onClick={() => switchMode("learn")}><GraduationCap size={18} /> Learn</button>
           <button className={mode === "sandbox" ? "active" : ""} onClick={() => switchMode("sandbox")}><FlaskConical size={18} /> Sandbox</button>
@@ -463,12 +581,19 @@ export default function Home() {
             {parts.length === 0 && <div className="empty-board"><span><BatteryCharging size={30} /></span><h3>Your workbench is ready</h3><p>Add a battery and something to power.</p></div>}
             {parts.map((part) => {
               const active = poweredParts.has(part.id);
+              const partCurrent = running ? analysis.partCurrentMilliAmps.get(part.id) ?? 0 : 0;
+              const partVoltage = running ? analysis.partVoltageDrops.get(part.id) ?? 0 : 0;
+              const charge = capacitorCharge[part.id] ?? 0;
               const warning = running && (analysis.reversedLedIds.has(part.id) || analysis.unsafeLedIds.has(part.id));
               return (
-                <div key={part.id} className={`circuit-part ${selectedPart === part.id ? "selected" : ""} ${active ? "active" : ""} ${warning ? "warning" : ""}`} style={{ left: `${(part.x / BOARD_W) * 100}%`, top: `${(part.y / BOARD_H) * 100}%`, "--part-color": CATALOG[part.type].color, "--power-level": Math.min(1, analysis.currentMilliAmps / 80) } as React.CSSProperties} onPointerDown={(event) => startPartDrag(event, part)} onClick={(event) => { event.stopPropagation(); setSelectedPart(part.id); setSelectedWire(null); }} role="button" tabIndex={0} aria-label={`${CATALOG[part.type].name}${active ? ", powered" : ""}. Drag to move.`}>
+                <div key={part.id} className={`circuit-part ${selectedPart === part.id ? "selected" : ""} ${active ? "active" : ""} ${warning ? "warning" : ""}`} style={{ left: `${(part.x / BOARD_W) * 100}%`, top: `${(part.y / BOARD_H) * 100}%`, "--part-color": CATALOG[part.type].color, "--power-level": Math.min(1, partCurrent / 80), "--charge-level": `${charge}%` } as React.CSSProperties} onPointerDown={(event) => startPartDrag(event, part)} onClick={(event) => { event.stopPropagation(); setSelectedPart(part.id); setSelectedWire(null); }} role="button" tabIndex={0} aria-label={`${CATALOG[part.type].name}${active ? ", powered" : ""}. Drag to move.`}>
                   <button className={`terminal terminal-left ${selectedPin === pinId(part.id, 0) ? "chosen" : ""}`} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); handlePinClick(pinId(part.id, 0)); }} aria-label={`${CATALOG[part.type].name} ${part.type === "battery" ? "negative" : part.type === "led" ? "positive" : "left"} terminal`}><span>{part.type === "battery" ? "−" : part.type === "led" ? "+" : ""}</span></button>
                   <div className="part-title">{CATALOG[part.type].name}</div><PartSymbol type={part.type} active={active} closed={part.closed} />
                   {part.type === "switch" && <button className="switch-toggle" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); setParts((current) => current.map((item) => item.id === part.id ? { ...item, closed: !item.closed } : item)); }}>{part.closed ? "OPEN" : "CLOSE"}</button>}
+                  {part.type === "potentiometer" && <button className="part-control" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); cycleResistance(part.id); }} aria-label={`Change variable resistor value, currently ${part.resistance ?? 220} ohms`}>{part.resistance ?? 220} Ω</button>}
+                  {part.type === "ammeter" && <span className="meter-readout">{partCurrent < 10 ? partCurrent.toFixed(2) : partCurrent.toFixed(0)} mA</span>}
+                  {part.type === "voltmeter" && <span className="meter-readout voltage-readout">{partVoltage.toFixed(1)} V</span>}
+                  {part.type === "capacitor" && <span className="meter-readout charge-readout">{Math.round(charge)}%</span>}
                   {part.type === "motor" && active && <span className="motion-label">WHIRR!</span>}
                   {part.type === "buzzer" && active && <span className="motion-label buzzer-label">BEEP!</span>}
                   {part.type === "led" && active && <span className="glow-halo" />}{part.type === "lamp" && active && <span className="glow-halo lamp-halo" />}
@@ -478,23 +603,24 @@ export default function Home() {
               );
             })}
           </div>
-          <div className="board-footer"><span><span className="legend-dot terminal-sample" /> Tap terminals to wire</span><span><span className="legend-dot current-sample" /> Moving dashes show current</span><span><Unplug size={15} /> {wires.length} {wires.length === 1 ? "wire" : "wires"}</span><span className="meter"><Activity size={15} /> {running && analysis.hasCurrent ? `${Math.round(analysis.currentMilliAmps)} mA · ${analysis.branchCount} ${analysis.branchCount === 1 ? "path" : "paths"}` : "0 mA"}</span></div>
+          <div className="board-footer"><span><span className="legend-dot terminal-sample" /> Tap terminals to wire</span><span><span className="legend-dot current-sample" /> Moving dashes show current</span><span><Unplug size={15} /> {wires.length} {wires.length === 1 ? "wire" : "wires"}</span><span className="meter"><Activity size={15} /> {running && analysis.hasCurrent ? `${analysis.currentMilliAmps < 10 ? analysis.currentMilliAmps.toFixed(2) : Math.round(analysis.currentMilliAmps)} mA` : "0 mA"}<i /> <Gauge size={15} /> {voltage} V · {analysis.branchCount} {analysis.branchCount === 1 ? "path" : "paths"}</span></div>
         </section>
 
         <aside className="lesson-panel panel">
           {mode === "learn" ? <>
             <div className="lesson-count"><span>Lesson {lesson.id} of {lessons.length}</span><div><i style={{ width: `${((lessonIndex + 1) / lessons.length) * 100}%` }} /></div></div>
+            {lesson.id >= 10 && <div className="phase-progress"><Trophy size={17} /><span><strong>Measurement lab</strong>{completed.filter((id) => id >= 10).length} of 5 Phase 3 lessons complete</span></div>}
             <span className="kicker orange">{lesson.eyebrow}</span><h2>{lesson.title}</h2><p className="lesson-instruction">{lesson.instruction}</p>
             <div className={`result-card ${lessonComplete ? "success" : analysis.shortCircuit ? "danger" : ""}`}><span>{lessonComplete ? <Check size={22} /> : analysis.shortCircuit ? <AlertTriangle size={22} /> : <Zap size={22} />}</span><div><strong>{lessonComplete ? "Challenge complete!" : analysis.shortCircuit ? "Power stopped for safety" : "Your mission"}</strong><p>{lessonComplete ? lesson.success : analysis.shortCircuit ? "Remove the short path before components can run." : "Build the circuit and watch what changes."}</p></div></div>
             <div className="learn-box"><Lightbulb size={20} /><div><strong>What you’ll discover</strong><p>{lesson.concept}</p></div></div>
             <button className="hint-button" onClick={() => setShowHint((value) => !value)}><CircleHelp size={16} /> {showHint ? "Hide hint" : "Need a hint?"}</button>
             {showHint && <p className="hint-copy">{lesson.hint}</p>}
             <div className="lesson-nav"><button disabled={lessonIndex === 0} onClick={() => loadLesson(lessonIndex - 1)}>Back</button><button className="next-button" disabled={!lessonComplete || lessonIndex === lessons.length - 1} onClick={() => loadLesson(lessonIndex + 1)}>Next lesson <ChevronRight size={17} /></button></div>
-            <div className="lesson-dots" aria-label="Lesson selector">{lessons.map((item, index) => <button key={item.id} className={`${index === lessonIndex ? "current" : ""} ${completed.includes(item.id) ? "done" : ""} ${item.id > 5 ? "phase-two" : ""}`} onClick={() => loadLesson(index)} aria-label={`Open lesson ${item.id}: ${item.title}${completed.includes(item.id) ? ", completed" : ""}`}>{item.id}</button>)}</div>
+            <div className="lesson-dots" aria-label="Lesson selector">{lessons.map((item, index) => <button key={item.id} className={`${index === lessonIndex ? "current" : ""} ${completed.includes(item.id) ? "done" : ""} ${item.id >= 6 && item.id <= 9 ? "phase-two" : ""} ${item.id >= 10 ? "phase-three" : ""}`} onClick={() => loadLesson(index)} aria-label={`Open lesson ${item.id}: ${item.title}${completed.includes(item.id) ? ", completed" : ""}`}>{item.id}</button>)}</div>
           </> : <>
-            <span className="kicker orange">Experiment freely</span><h2>Invent your circuit</h2><p className="lesson-instruction">Build series and parallel branches. Spark Lab now checks every path independently and stops power when it detects a short.</p>
-            <div className="sandbox-tips"><div><span>1</span><p><strong>Choose voltage</strong>Try 3V, 6V or 9V.</p></div><div><span>2</span><p><strong>Build branches</strong>Power more than one output.</p></div><div><span>3</span><p><strong>Watch the meter</strong>Compare current as paths change.</p></div></div>
-            <div className="learn-box"><Volume2 size={20} /><div><strong>Phase 2 challenge</strong><p>Can one switch control a lamp, motor and buzzer on three parallel branches?</p></div></div>
+            <span className="kicker orange">Experiment freely</span><h2>Invent your circuit</h2><p className="lesson-instruction">Build branches, adjust resistance, measure current and voltage, and watch a capacitor store charge.</p>
+            <div className="sandbox-tips"><div><span>1</span><p><strong>Measure</strong>Add meters in series or parallel.</p></div><div><span>2</span><p><strong>Adjust</strong>Tap a variable resistor to change its value.</p></div><div><span>3</span><p><strong>Store energy</strong>Charge a capacitor, then open the circuit.</p></div></div>
+            <div className="learn-box"><Volume2 size={20} /><div><strong>Phase 3 challenge</strong><p>Build a lamp branch with an ammeter, then measure the supply with a parallel voltmeter.</p></div></div>
           </>}
           <button className="reset-progress-button" onClick={resetEverything}><RotateCcw size={15} /> Reset everything</button>
         </aside>

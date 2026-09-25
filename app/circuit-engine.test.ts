@@ -89,3 +89,41 @@ test("requires a resistor in the LED branch, not a parallel branch", () => {
   assert.equal(result.poweredParts.has("r"), true);
   assert.equal(result.unsafeLedIds.has("led"), true);
 });
+
+test("reports current through an ammeter in a series circuit", () => {
+  const parts = [part("b", "battery"), part("a", "ammeter"), part("lamp", "lamp")];
+  const wires = [
+    wire("w1", "b", 1, "a", 0),
+    wire("w2", "a", 1, "lamp", 0),
+    wire("w3", "lamp", 1, "b", 0),
+  ];
+  const result = analyzeCircuit(parts, wires, 9);
+
+  assert.equal(result.shortCircuit, false);
+  assert.ok((result.partCurrentMilliAmps.get("a") ?? 0) > 98);
+  assert.ok((result.partCurrentMilliAmps.get("a") ?? 0) < 100);
+});
+
+test("a voltmeter across the supply reads almost the full voltage", () => {
+  const parts = [part("b", "battery"), part("v", "voltmeter")];
+  const wires = [
+    wire("w1", "b", 1, "v", 0),
+    wire("w2", "v", 1, "b", 0),
+  ];
+  const result = analyzeCircuit(parts, wires, 6);
+
+  assert.ok((result.partVoltageDrops.get("v") ?? 0) > 5.99);
+  assert.ok((result.partCurrentMilliAmps.get("v") ?? 1) < 0.01);
+});
+
+test("raising variable resistance lowers circuit current", () => {
+  const lowParts = [part("b", "battery"), { ...part("p", "potentiometer"), resistance: 100 }, part("lamp", "lamp")];
+  const highParts = lowParts.map((item) => item.id === "p" ? { ...item, resistance: 1_000 } : item);
+  const wires = [
+    wire("w1", "b", 1, "p", 0),
+    wire("w2", "p", 1, "lamp", 0),
+    wire("w3", "lamp", 1, "b", 0),
+  ];
+
+  assert.ok(analyzeCircuit(lowParts, wires).currentMilliAmps > analyzeCircuit(highParts, wires).currentMilliAmps);
+});

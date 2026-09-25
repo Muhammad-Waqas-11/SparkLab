@@ -1,6 +1,6 @@
 # Spark Lab — Kids Circuit Studio
 
-Spark Lab is a frontend-only, interactive electronics learning app for children. It includes a drag-and-drop circuit board, terminal-to-terminal wiring, animated current flow, working lamps, LEDs, switches, motors and a buzzer, nine guided lessons, a free-build sandbox, and local progress saving.
+Spark Lab is a frontend-only, interactive electronics learning app for children. It includes a drag-and-drop circuit board, terminal-to-terminal wiring, animated current flow, working outputs, measurement instruments, adjustable resistance, capacitor charging, fourteen guided lessons, a free-build sandbox, and local progress saving.
 
 ## Run locally
 
@@ -52,6 +52,16 @@ Progress is stored only in the browser using `localStorage`. The project has no 
 - Animated buzzer component
 - Four new lessons covering series, parallel, shorts and sound
 - Contextual hints for all nine lessons
+
+## Phase 3 measurement lab
+
+- Ammeter readings for current flowing through a series branch
+- Voltmeter readings based on calculated voltage drop
+- Variable resistor values that immediately change circuit current
+- Capacitor charging and discharging animation
+- Per-component current and voltage calculations
+- Five new lessons covering current, voltage, resistance, stored charge and combined measurement
+- Phase-specific progress and achievement feedback
 
 ## Important note
 
