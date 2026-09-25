@@ -157,6 +157,8 @@ button:focus-visible { outline:3px solid rgba(49,93,244,.32); outline-offset:2px
 .lesson-dots button.current { color:#fff; background:var(--blue); border-color:var(--blue); }
 .lesson-dots button.done:not(.current) { color:#087555; background:#e4f8f1; border-color:#a9e3d0; }
 .lesson-dots button.phase-two:not(.current):not(.done) { color:#6c46b2; border-color:#d8c6f2; background:#f8f3ff; }
+.reset-progress-button { width:100%; min-height:38px; margin-top:13px; border:1px solid #efc8cc; border-radius:11px; background:#fff7f7; color:#a2343e; display:flex; align-items:center; justify-content:center; gap:7px; cursor:pointer; font-size:.74rem; font-weight:800; }
+.reset-progress-button:hover { border-color:#dc9ca3; background:#ffeded; color:#8f202b; }
 .sandbox-tips { display:grid; gap:10px; margin:18px 0; }
 .sandbox-tips>div { display:flex; align-items:center; gap:10px; padding:10px; border:1px solid var(--border); border-radius:13px; }
 .sandbox-tips>div>span { width:30px; height:30px; flex:none; display:grid; place-items:center; color:var(--blue); background:#edf1ff; border-radius:9px; font-weight:900; }

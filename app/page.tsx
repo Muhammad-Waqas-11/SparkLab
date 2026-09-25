@@ -217,6 +217,7 @@ export default function Home() {
   const [running, setRunning] = useState(true);
   const [voltage, setVoltage] = useState(9);
   const [completed, setCompleted] = useState<number[]>([]);
+  const [progressLoaded, setProgressLoaded] = useState(false);
   const [notice, setNotice] = useState("Tap two terminals to connect a wire.");
   const [showHint, setShowHint] = useState(false);
   const [dragging, setDragging] = useState<{ id: string; dx: number; dy: number } | null>(null);
@@ -225,21 +226,40 @@ export default function Home() {
   const analysis = useMemo(() => analyzeCircuit(parts, wires, voltage), [parts, voltage, wires]);
   const poweredParts = useMemo(() => running ? analysis.poweredParts : new Set<string>(), [analysis.poweredParts, running]);
   const poweredWires = useMemo(() => running ? analysis.poweredWires : new Set<string>(), [analysis.poweredWires, running]);
-  const lessonDone = mode === "learn" && running && lesson.check({ analysis, activePaths: analysis.activePaths, parts, poweredParts });
+  const lessonPassedNow = mode === "learn" && running && lesson.check({ analysis, activePaths: analysis.activePaths, parts, poweredParts });
+  const lessonComplete = completed.includes(lesson.id) || lessonPassedNow;
 
   useEffect(() => {
-    const stored = window.localStorage.getItem("spark-lab-progress");
-    if (stored) try { setCompleted(JSON.parse(stored)); } catch { /* ignore invalid local data */ }
+    const timer = window.setTimeout(() => {
+      const stored = window.localStorage.getItem("spark-lab-progress");
+      if (stored) try {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed)) {
+          const validLessons = parsed.filter((id: unknown): id is number => typeof id === "number" && Number.isInteger(id) && id >= 1 && id <= lessons.length);
+          setCompleted([...new Set(validLessons)].sort((a, b) => a - b));
+        }
+      } catch { /* ignore invalid local data */ }
+      setProgressLoaded(true);
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, []);
 
   useEffect(() => {
-    if (!lessonDone || completed.includes(lesson.id)) return;
-    const next = [...completed, lesson.id];
-    setCompleted(next);
-    window.localStorage.setItem("spark-lab-progress", JSON.stringify(next));
-  }, [completed, lesson.id, lessonDone]);
+    if (!progressLoaded || !lessonPassedNow || completed.includes(lesson.id)) return;
+    const timer = window.setTimeout(() => {
+      setCompleted((current) => {
+        if (current.includes(lesson.id)) return current;
+        const next = [...current, lesson.id].sort((a, b) => a - b);
+        window.localStorage.setItem("spark-lab-progress", JSON.stringify(next));
+        return next;
+      });
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [completed, lesson.id, lessonPassedNow, progressLoaded]);
 
   useEffect(() => {
+    // This state mirrors circuit analysis while preserving short interaction messages between changes.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (!running) setNotice("Simulation paused. Press Run to test the circuit.");
     else if (!parts.some((part) => part.type === "battery")) setNotice("Add a battery to give the circuit energy.");
     else if (analysis.shortCircuit) setNotice("Short circuit detected. Select a red bypass wire and delete it.");
@@ -287,6 +307,15 @@ export default function Home() {
     }
     resetLesson();
   }, [clearSelection, mode, resetLesson]);
+
+  const resetEverything = useCallback(() => {
+    if (!window.confirm("Reset every completed lesson and clear the current circuit?")) return;
+    window.localStorage.removeItem("spark-lab-progress");
+    setCompleted([]);
+    setVoltage(9);
+    setNotice("Tap two terminals to connect a wire.");
+    loadLesson(0);
+  }, [loadLesson]);
 
   useEffect(() => {
     const context = (document as Document & { modelContext?: { registerTool?: (tool: unknown, options?: unknown) => void } }).modelContext;
@@ -456,17 +485,18 @@ export default function Home() {
           {mode === "learn" ? <>
             <div className="lesson-count"><span>Lesson {lesson.id} of {lessons.length}</span><div><i style={{ width: `${((lessonIndex + 1) / lessons.length) * 100}%` }} /></div></div>
             <span className="kicker orange">{lesson.eyebrow}</span><h2>{lesson.title}</h2><p className="lesson-instruction">{lesson.instruction}</p>
-            <div className={`result-card ${lessonDone ? "success" : analysis.shortCircuit ? "danger" : ""}`}><span>{lessonDone ? <Check size={22} /> : analysis.shortCircuit ? <AlertTriangle size={22} /> : <Zap size={22} />}</span><div><strong>{lessonDone ? "Challenge complete!" : analysis.shortCircuit ? "Power stopped for safety" : "Your mission"}</strong><p>{lessonDone ? lesson.success : analysis.shortCircuit ? "Remove the short path before components can run." : "Build the circuit and watch what changes."}</p></div></div>
+            <div className={`result-card ${lessonComplete ? "success" : analysis.shortCircuit ? "danger" : ""}`}><span>{lessonComplete ? <Check size={22} /> : analysis.shortCircuit ? <AlertTriangle size={22} /> : <Zap size={22} />}</span><div><strong>{lessonComplete ? "Challenge complete!" : analysis.shortCircuit ? "Power stopped for safety" : "Your mission"}</strong><p>{lessonComplete ? lesson.success : analysis.shortCircuit ? "Remove the short path before components can run." : "Build the circuit and watch what changes."}</p></div></div>
             <div className="learn-box"><Lightbulb size={20} /><div><strong>What you’ll discover</strong><p>{lesson.concept}</p></div></div>
             <button className="hint-button" onClick={() => setShowHint((value) => !value)}><CircleHelp size={16} /> {showHint ? "Hide hint" : "Need a hint?"}</button>
             {showHint && <p className="hint-copy">{lesson.hint}</p>}
-            <div className="lesson-nav"><button disabled={lessonIndex === 0} onClick={() => loadLesson(lessonIndex - 1)}>Back</button><button className="next-button" disabled={!lessonDone || lessonIndex === lessons.length - 1} onClick={() => loadLesson(lessonIndex + 1)}>Next lesson <ChevronRight size={17} /></button></div>
-            <div className="lesson-dots" aria-label="Lesson selector">{lessons.map((item, index) => <button key={item.id} className={`${index === lessonIndex ? "current" : ""} ${completed.includes(item.id) ? "done" : ""} ${item.id > 5 ? "phase-two" : ""}`} onClick={() => loadLesson(index)} aria-label={`Open lesson ${item.id}: ${item.title}`}>{completed.includes(item.id) ? <Check size={14} /> : item.id}</button>)}</div>
+            <div className="lesson-nav"><button disabled={lessonIndex === 0} onClick={() => loadLesson(lessonIndex - 1)}>Back</button><button className="next-button" disabled={!lessonComplete || lessonIndex === lessons.length - 1} onClick={() => loadLesson(lessonIndex + 1)}>Next lesson <ChevronRight size={17} /></button></div>
+            <div className="lesson-dots" aria-label="Lesson selector">{lessons.map((item, index) => <button key={item.id} className={`${index === lessonIndex ? "current" : ""} ${completed.includes(item.id) ? "done" : ""} ${item.id > 5 ? "phase-two" : ""}`} onClick={() => loadLesson(index)} aria-label={`Open lesson ${item.id}: ${item.title}${completed.includes(item.id) ? ", completed" : ""}`}>{item.id}</button>)}</div>
           </> : <>
             <span className="kicker orange">Experiment freely</span><h2>Invent your circuit</h2><p className="lesson-instruction">Build series and parallel branches. Spark Lab now checks every path independently and stops power when it detects a short.</p>
             <div className="sandbox-tips"><div><span>1</span><p><strong>Choose voltage</strong>Try 3V, 6V or 9V.</p></div><div><span>2</span><p><strong>Build branches</strong>Power more than one output.</p></div><div><span>3</span><p><strong>Watch the meter</strong>Compare current as paths change.</p></div></div>
             <div className="learn-box"><Volume2 size={20} /><div><strong>Phase 2 challenge</strong><p>Can one switch control a lamp, motor and buzzer on three parallel branches?</p></div></div>
           </>}
+          <button className="reset-progress-button" onClick={resetEverything}><RotateCcw size={15} /> Reset everything</button>
         </aside>
       </div>
     </main>
